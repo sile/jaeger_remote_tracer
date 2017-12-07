@@ -1,23 +1,28 @@
 use std::collections::HashMap;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::SystemTime;
 use fibers::sync::mpsc;
 use futures::{Future, Stream, Poll, Async};
-use rustracing_jaeger::Span;
+use rustracing;
+use rustracing::tag::Tag;
+use rustracing_jaeger::{Span, Tracer};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
-use rustracing_jaeger::span::SpanReceiver;
 use trackable::error::Failure;
+
+use util;
 
 pub type SpanId = u64;
 
-fn unixtime_to_systemtime(unixtime: f64) -> SystemTime {
-    let duration = Duration::new(unixtime as u64, (unixtime * 1_000_000_000.0) as u32);
-    UNIX_EPOCH + duration
-}
-
 #[derive(Debug)]
 pub enum Command {
-    StartSpan { client_span_id: u64, span: Span },
+    StartSpan {
+        client_span_id: u64,
+        operation_name: String,
+        child_of: Option<u64>,
+        follows_from: Option<u64>,
+        tags: Vec<(String, String)>,
+        time: Option<SystemTime>,
+    },
     Finish {
         client_span_id: u64,
         finish_time: Option<f64>,
@@ -26,18 +31,23 @@ pub enum Command {
 
 #[derive(Debug)]
 pub struct Service {
+    tracer: Tracer,
     spans: HashMap<u64, Span>,
     command_tx: mpsc::Sender<Command>,
     command_rx: mpsc::Receiver<Command>,
 }
 impl Service {
-    pub fn new(span_rx: SpanReceiver, reporter: JaegerCompactReporter) -> Self {
+    pub fn new(reporter: JaegerCompactReporter) -> Self {
+        let sampler = rustracing::sampler::AllSampler;
+        let (tracer, span_rx) = Tracer::new(sampler);
+
         thread::spawn(move || while let Ok(span) = span_rx.recv() {
             reporter.report(&[span]).expect("Cannot send report");
         });
 
         let (tx, rx) = mpsc::channel();
         Service {
+            tracer,
             spans: HashMap::new(),
             command_tx: tx,
             command_rx: rx,
@@ -51,9 +61,26 @@ impl Service {
         match command {
             Command::StartSpan {
                 client_span_id,
-                span,
+                operation_name,
+                child_of,
+                follows_from,
+                tags,
+                time,
             } => {
-                self.spans.insert(client_span_id, span);
+                let mut span = self.tracer.span(operation_name);
+                if let Some(ref_span) = child_of.and_then(|id| self.spans.get(&id)) {
+                    span = span.child_of(ref_span);
+                }
+                if let Some(ref_span) = follows_from.and_then(|id| self.spans.get(&id)) {
+                    span = span.follows_from(ref_span);
+                }
+                if let Some(time) = time {
+                    span = span.start_time(time);
+                }
+                for (k, v) in tags {
+                    span = span.tag(Tag::new(k, v));
+                }
+                self.spans.insert(client_span_id, span.start());
             }
             Command::Finish {
                 client_span_id,
@@ -61,7 +88,7 @@ impl Service {
             } => {
                 if let Some(mut span) = self.spans.remove(&client_span_id) {
                     if let Some(finish_time) = finish_time {
-                        span.set_finish_time(|| unixtime_to_systemtime(finish_time));
+                        span.set_finish_time(|| util::unixtime_to_systemtime(finish_time));
                     }
                 }
             }
@@ -84,11 +111,8 @@ pub struct ServiceHandle {
     command_tx: mpsc::Sender<Command>,
 }
 impl ServiceHandle {
-    pub fn start_span(&self, client_span_id: u64, span: Span) {
-        let _ = self.command_tx.send(Command::StartSpan {
-            client_span_id,
-            span,
-        });
+    pub fn send_command(&self, command: Command) {
+        let _ = self.command_tx.send(command);
     }
     pub fn finish(&self, client_span_id: u64, finish_time: Option<f64>) {
         let _ = self.command_tx.send(Command::Finish {

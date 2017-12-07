@@ -44,7 +44,14 @@ impl RpcResponse for EmptyResponse {
 pub struct StartSpanQuery {
     pub operation_name: String,
     pub client_span_id: u64,
-    // TODO: start_time,tags,child_of,folllows-from
+    #[serde(default)]
+    pub child_of: Option<u64>,
+    #[serde(default)]
+    pub follows_from: Option<u64>,
+    #[serde(default)]
+    pub tags: String, // ${KEY}:${VALUE},...
+    #[serde(default)]
+    pub time: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -77,7 +84,7 @@ impl RpcRequest for FinishRequest {
 pub struct FinishQuery {
     pub client_span_id: u64,
     #[serde(default)]
-    pub finish_time: Option<f64>,
+    pub time: Option<f64>,
 }
 
 fn discard_body<T: Send + 'static>(this: T, body: BodyReader) -> ReadBody<T> {

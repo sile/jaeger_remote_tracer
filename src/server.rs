@@ -2,19 +2,18 @@ use futures;
 use futures::future::Finished;
 use htrpc::{HandleRpc, RpcServerBuilder, Result};
 use htrpc::types::NeverFail;
-use rustracing_jaeger::Tracer;
 
 use rpc;
-use service::ServiceHandle;
+use service::{ServiceHandle, Command};
+use util;
 
 #[derive(Debug, Clone)]
 pub struct Server {
-    tracer: Tracer,
     service: ServiceHandle,
 }
 impl Server {
-    pub fn new(tracer: Tracer, service: ServiceHandle) -> Self {
-        Server { tracer, service }
+    pub fn new(service: ServiceHandle) -> Self {
+        Server { service }
     }
     pub fn register(self, builder: &mut RpcServerBuilder) -> Result<()> {
         track!(builder.register(self.clone(), rpc::StartSpanProcedure))?;
@@ -28,9 +27,28 @@ impl HandleRpc<rpc::StartSpanProcedure> for Server {
         let rpc::StartSpanQuery {
             operation_name,
             client_span_id,
+            child_of,
+            follows_from,
+            tags,
+            time,
         } = request.query;
-        let span = self.tracer.span(operation_name).start();
-        self.service.start_span(client_span_id, span);
+        self.service.send_command(Command::StartSpan {
+            client_span_id,
+            operation_name,
+            child_of,
+            follows_from,
+            tags: tags.split(",")
+                .filter(|kv| !kv.is_empty())
+                .map(|kv| {
+                    let mut i = kv.splitn(2, ":");
+                    (
+                        i.next().unwrap_or("").to_owned(),
+                        i.next().unwrap_or("").to_owned(),
+                    )
+                })
+                .collect(),
+            time: time.map(util::unixtime_to_systemtime),
+        });
         futures::finished(rpc::EmptyResponse::Ok)
     }
 }
@@ -39,9 +57,9 @@ impl HandleRpc<rpc::FinishProcedure> for Server {
     fn handle_rpc(self, request: rpc::FinishRequest) -> Self::Future {
         let rpc::FinishQuery {
             client_span_id,
-            finish_time,
+            time,
         } = request.query;
-        self.service.finish(client_span_id, finish_time);
+        self.service.finish(client_span_id, time);
         futures::finished(rpc::EmptyResponse::Ok)
     }
 }
