@@ -6,7 +6,7 @@ jaeger_remote_tracer
 #### GET /start_span
 
 QUERY:
-- `client_span_id`:
+- `span_id`:
   - type: u64
   - required
 - `operation_name`:
@@ -27,7 +27,7 @@ QUERY:
 
 #### GET /finish
 
-- `client_span_id`:
+- `span_id`:
   - type: u64
   - required
 - `time`:
@@ -41,10 +41,10 @@ $ docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 jaegertracing/all-
 
 $ cargo run
 
-$ curl 'http://localhost:8888/start_span?operation_name=foo&client_span_id=10&tags=foo:bar,111:222'
-$ curl 'http://localhost:8888/start_span?operation_name=foo&client_span_id=20&child_of=10'
-$ curl 'http://localhost:8888/finish?client_span_id=20'
-$ curl 'http://localhost:8888/finish?client_span_id=10'
+$ curl 'http://localhost:8888/start_span?operation_name=foo&span_id=10&tags=foo:bar,111:222'
+$ curl 'http://localhost:8888/start_span?operation_name=foo&span_id=20&child_of=10'
+$ curl 'http://localhost:8888/finish?span_id=20'
+$ curl 'http://localhost:8888/finish?span_id=10'
 
 $ firefox http://localhost:16686/
 ```

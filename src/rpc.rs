@@ -43,7 +43,7 @@ impl RpcResponse for EmptyResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StartSpanQuery {
     pub operation_name: String,
-    pub client_span_id: u64,
+    pub span_id: u64,
     #[serde(default)]
     pub child_of: Option<u64>,
     #[serde(default)]
@@ -82,7 +82,7 @@ impl RpcRequest for FinishRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FinishQuery {
-    pub client_span_id: u64,
+    pub span_id: u64,
     #[serde(default)]
     pub time: Option<f64>,
 }

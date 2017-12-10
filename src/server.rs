@@ -26,14 +26,15 @@ impl HandleRpc<rpc::StartSpanProcedure> for Server {
     fn handle_rpc(self, request: rpc::StartSpanRequest) -> Self::Future {
         let rpc::StartSpanQuery {
             operation_name,
-            client_span_id,
+            span_id,
             child_of,
             follows_from,
             tags,
             time,
         } = request.query;
+        // println!("# START_SPAN: {}", span_id);
         self.service.send_command(Command::StartSpan {
-            client_span_id,
+            span_id,
             operation_name,
             child_of,
             follows_from,
@@ -55,11 +56,9 @@ impl HandleRpc<rpc::StartSpanProcedure> for Server {
 impl HandleRpc<rpc::FinishProcedure> for Server {
     type Future = Finished<rpc::EmptyResponse, NeverFail>;
     fn handle_rpc(self, request: rpc::FinishRequest) -> Self::Future {
-        let rpc::FinishQuery {
-            client_span_id,
-            time,
-        } = request.query;
-        self.service.finish(client_span_id, time);
+        let rpc::FinishQuery { span_id, time } = request.query;
+        // println!("# FINISH: {}", span_id);
+        self.service.finish(span_id, time);
         futures::finished(rpc::EmptyResponse::Ok)
     }
 }

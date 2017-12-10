@@ -16,7 +16,7 @@ pub type SpanId = u64;
 #[derive(Debug)]
 pub enum Command {
     StartSpan {
-        client_span_id: u64,
+        span_id: u64,
         operation_name: String,
         child_of: Option<u64>,
         follows_from: Option<u64>,
@@ -24,7 +24,7 @@ pub enum Command {
         time: Option<SystemTime>,
     },
     Finish {
-        client_span_id: u64,
+        span_id: u64,
         finish_time: Option<f64>,
     },
 }
@@ -60,19 +60,38 @@ impl Service {
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::StartSpan {
-                client_span_id,
+                span_id,
                 operation_name,
                 child_of,
                 follows_from,
                 tags,
                 time,
             } => {
+                let mut state = None;
                 let mut span = self.tracer.span(operation_name);
                 if let Some(ref_span) = child_of.and_then(|id| self.spans.get(&id)) {
                     span = span.child_of(ref_span);
+                    state = Some(
+                        format!(
+                            "{}:{:x}:0:1",
+                            ref_span.context().unwrap().state().trace_id(),
+                            span_id
+                        ).parse()
+                            .unwrap(),
+                    );
                 }
                 if let Some(ref_span) = follows_from.and_then(|id| self.spans.get(&id)) {
                     span = span.follows_from(ref_span);
+                    if state.is_none() {
+                        state = Some(
+                            format!(
+                                "{}:{:x}:0:1",
+                                ref_span.context().unwrap().state().trace_id(),
+                                span_id
+                            ).parse()
+                                .unwrap(),
+                        );
+                    }
                 }
                 if let Some(time) = time {
                     span = span.start_time(time);
@@ -80,13 +99,17 @@ impl Service {
                 for (k, v) in tags {
                     span = span.tag(Tag::new(k, v));
                 }
-                self.spans.insert(client_span_id, span.start());
+
+                let state = state.unwrap_or_else(|| {
+                    format!("{:x}:{:x}:0:1", span_id, span_id).parse().unwrap()
+                });
+                self.spans.insert(span_id, span.start_with_state(state));
             }
             Command::Finish {
-                client_span_id,
+                span_id,
                 finish_time,
             } => {
-                if let Some(mut span) = self.spans.remove(&client_span_id) {
+                if let Some(mut span) = self.spans.remove(&span_id) {
                     if let Some(finish_time) = finish_time {
                         span.set_finish_time(|| util::unixtime_to_systemtime(finish_time));
                     }
@@ -114,9 +137,9 @@ impl ServiceHandle {
     pub fn send_command(&self, command: Command) {
         let _ = self.command_tx.send(command);
     }
-    pub fn finish(&self, client_span_id: u64, finish_time: Option<f64>) {
+    pub fn finish(&self, span_id: u64, finish_time: Option<f64>) {
         let _ = self.command_tx.send(Command::Finish {
-            client_span_id,
+            span_id,
             finish_time,
         });
     }
