@@ -4,9 +4,8 @@ extern crate futures;
 extern crate htrpc;
 extern crate rustracing;
 extern crate rustracing_jaeger;
-extern crate serde;
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 #[macro_use]
 extern crate trackable;
 
