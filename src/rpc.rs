@@ -34,7 +34,7 @@ pub enum EmptyResponse {
     InternalServerError,
 }
 impl RpcResponse for EmptyResponse {
-    fn body(&mut self) -> Box<AsRef<[u8]> + Send + 'static> {
+    fn body(&mut self) -> Box<dyn AsRef<[u8]> + Send + 'static> {
         Box::new([])
     }
     fn set_body(&mut self, _bytes: Vec<u8>) {}
