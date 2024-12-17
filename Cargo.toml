@@ -7,7 +7,7 @@ authors = ["Takeru Ohta <phjgt308@gmail.com>"]
 clap = "4"
 fibers = "0.1"
 futures = "0.1"
-htrpc = "0.0.18"
+htrpc = "0.0.19"
 rustracing = "0.6"
 rustracing_jaeger = "0.9"
 serde = {version = "1", features = ["derive"] }
